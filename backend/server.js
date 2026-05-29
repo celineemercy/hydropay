@@ -11,6 +11,10 @@ app.get('/', (req, res) => {
   res.sendFile(__dirname + '/index.html');
 });
 
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 io.on('connection', (socket) => {
   console.log(`Node terhubung: ${socket.id}`);
 
@@ -20,7 +24,7 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = 8086;
+const PORT = process.env.PORT || 8086;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server berjalan di Port ${PORT}`);
 });

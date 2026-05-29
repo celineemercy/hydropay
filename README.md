@@ -40,15 +40,45 @@ From the project root:
 docker compose up --build
 ```
 
+Or use the npm shortcut:
+
+```bash
+npm run docker:up
+```
+
 Then open:
 
 - Frontend dashboard: `http://localhost:3000`
 - Backend server: `http://localhost:8086`
 
+Run in the background:
+
+```bash
+npm run docker:up:detached
+```
+
+Check running services:
+
+```bash
+npm run docker:ps
+```
+
+View container logs:
+
+```bash
+npm run docker:logs
+```
+
 To stop the containers:
 
 ```bash
-docker compose down
+npm run docker:down
+```
+
+Optional port overrides:
+
+```bash
+FRONTEND_PORT=3001 BACKEND_PORT=8087 docker compose up --build
 ```
 
 ## Run Locally
@@ -104,16 +134,21 @@ The backend currently handles:
 - `klik_tombol`: received from a connected client or device
 - `ganti_layar`: broadcast by the backend after `klik_tombol`
 
+The backend also exposes `GET /health` for Docker health checks.
+
 The frontend dashboard currently uses local sample transaction data. The hook in `frontend/src/hooks/useTransactionData.ts` includes notes for replacing the sample data with Socket.IO updates or an API polling endpoint.
 
 ## Useful Commands
 
 ```bash
 # Start production-like containers
-docker compose up --build
+npm run docker:up
 
 # Stop containers
-docker compose down
+npm run docker:down
+
+# Show container status
+npm run docker:ps
 
 # Build frontend assets
 cd frontend
