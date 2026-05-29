@@ -1,0 +1,30 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hydropay-backend
+    environment:
+      NODE_ENV: production
+    ports:
+      - "8086:8086"
+    networks:
+      - hydropay-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hydropay-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - hydropay-network
+    restart: unless-stopped
+
+networks:
+  hydropay-network:
+    driver: bridge
