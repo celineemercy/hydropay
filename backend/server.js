@@ -20,6 +20,14 @@ const io = new Server(server, {
 app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
 app.use(express.json({ limit: "32kb" }));
 
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    console.log(`[API] ${req.method} ${req.path} from ${req.ip}`);
+  }
+
+  next();
+});
+
 const transactionInputSchema = z.object({
   amount: z.coerce.number().int().positive(),
   status: z

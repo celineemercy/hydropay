@@ -140,6 +140,14 @@ bool sendTransactionToBackend(int amount, const String& status, int ml, const St
   return false;
 }
 
+void printNetworkDebug() {
+  Serial.println("[DEBUG] WiFi status: " + String(WiFi.status()));
+  Serial.println("[DEBUG] Local IP: " + WiFi.localIP().toString());
+  Serial.println("[DEBUG] Gateway: " + WiFi.gatewayIP().toString());
+  Serial.println("[DEBUG] RSSI: " + String(WiFi.RSSI()));
+  Serial.println("[DEBUG] Backend URL: " + String(serverName));
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -229,6 +237,24 @@ void setup() {
 }
 
 void loop() {
+  if (Serial.available()) {
+    String command = Serial.readStringUntil('\n');
+    command.trim();
+
+    Serial.println("[DEBUG] Serial command diterima: " + command);
+
+    if (command == "test") {
+      sendTransactionToBackend(
+        5000,
+        "Success",
+        300,
+        "ESP32 serial test transaction"
+      );
+    } else if (command == "net") {
+      printNetworkDebug();
+    }
+  }
+
   if (isWaitingForPayment) {
     if (ts.touched()) {
       long x_sum = 0, y_sum = 0, z_sum = 0;
@@ -256,6 +282,13 @@ void loop() {
           tft.setTextSize(3);
           tft.setCursor(40, 100);
           tft.print("BAYAR SUKSES!");
+
+          sendTransactionToBackend(
+            pendingAmount,
+            "Success",
+            pendingMl,
+            "QRIS payment accepted"
+          );
 
           delay(1000);
 
@@ -477,13 +510,6 @@ void startWaitingScreen(int seconds) {
     tft.print(i);
     delay(1000);
   }
-
-  sendTransactionToBackend(
-    pendingAmount,
-    "Success",
-    pendingMl,
-    "QRIS payment accepted and water dispensed"
-  );
 
   isWaiting = false;
   drawMenu();
