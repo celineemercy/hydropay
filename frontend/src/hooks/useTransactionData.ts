@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export type TransactionStatus = "success" | "failed";
 
@@ -19,6 +19,19 @@ export interface TransactionMetrics {
 export interface UseTransactionDataResult {
   transactions: Transaction[];
   metrics: TransactionMetrics;
+}
+
+interface ApiTransaction {
+  _id?: string;
+  id?: string;
+  timestamp?: string;
+  status?: string;
+  amount?: number;
+  details?: string;
+}
+
+interface TransactionsResponse {
+  transactions?: ApiTransaction[];
 }
 
 const initialTransactions: Transaction[] = [
@@ -62,36 +75,57 @@ const initialTransactions: Transaction[] = [
 export function useTransactionData(): UseTransactionDataResult {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
 
-  /*
-   * Future WebSocket integration:
-   *
-   * 1. Install the client in this frontend app:
-   *    npm install socket.io-client
-   *
-   * 2. Import it here:
-   *    import { io } from "socket.io-client";
-   *
-   * 3. Add a useEffect below the useState call:
-   *    useEffect(() => {
-   *      const socket = io(import.meta.env.VITE_SOCKET_URL ?? "http://localhost:8086");
-   *
-   *      socket.on("transaction:update", (payload: Transaction) => {
-   *        setTransactions((current) => [payload, ...current].slice(0, 20));
-   *      });
-   *
-   *      return () => socket.disconnect();
-   *    }, []);
-   *
-   * 4. On the Node backend, emit "transaction:update" when your ESP32/Arduino,
-   *    MQTT listener, payment webhook, or LCD workflow produces a new status:
-   *    io.emit("transaction:update", transactionPayload);
-   *
-   * Alternative API polling/fetch integration:
-   * - Create an endpoint such as GET /api/transactions in Express.
-   * - Add a useEffect here that calls fetch("/api/transactions"), validates the
-   *   JSON shape, then calls setTransactions(data).
-   * - For near-real-time updates without sockets, repeat the fetch with setInterval.
-   */
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadTransactions() {
+      try {
+        const response = await fetch("/api/transactions");
+
+        if (!response.ok) {
+          throw new Error(`Failed to load transactions: ${response.status}`);
+        }
+
+        const data = (await response.json()) as TransactionsResponse;
+        const nextTransactions = (data.transactions ?? [])
+          .map((transaction): Transaction | null => {
+            const status = transaction.status?.toLowerCase();
+
+            if (
+              !transaction.timestamp ||
+              !transaction.amount ||
+              !transaction.details ||
+              (status !== "success" && status !== "failed")
+            ) {
+              return null;
+            }
+
+            return {
+              id: transaction.id ?? transaction._id ?? crypto.randomUUID(),
+              timestamp: transaction.timestamp,
+              status,
+              amount: transaction.amount,
+              details: transaction.details,
+            };
+          })
+          .filter((transaction): transaction is Transaction => transaction !== null);
+
+        if (isMounted) {
+          setTransactions(nextTransactions);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    loadTransactions();
+    const intervalId = window.setInterval(loadTransactions, 5000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   const metrics = useMemo<TransactionMetrics>(() => {
     return transactions.reduce<TransactionMetrics>(
