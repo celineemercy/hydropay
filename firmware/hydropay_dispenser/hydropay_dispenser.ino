@@ -7,27 +7,33 @@
 #include <HTTPClient.h>
 #include "qris_qrc.h"
 
+// ====== TEMA WARNA MODERN (RGB565) ======
+#define COLOR_BG        0x10A2  // Dark Navy Blue
+#define COLOR_CARD      0x18E3  // Lighter Navy (untuk header/aksen)
+#define COLOR_BTN_300   0x03EF  // Modern Blue
+#define COLOR_BTN_1L    0xE248  // Modern Red/Coral
+#define COLOR_SUCCESS   0x05A7  // Modern Green
+#define COLOR_TEXT_DIM  0xBDD7  // Light Gray
+#define COLOR_WARNING   0xFDA0  // Modern Orange
+
 // ====== KONFIGURASI WIFI & BACKEND ======
 const char* ssid = "hydropay";
 const char* password = "hyrdopay123";
 
-// Ganti dengan IPv4 laptop/server yang menjalankan Docker HydroPay.
 const char* serverName = "http://10.197.22.242:8086/api/hardware/transactions";
 
-// ====== PIN LAYAR (Direct Wiring) ======
+// ====== PIN LAYAR & SENTUH ======
 #define TFT_SCLK 18
 #define TFT_MOSI 21
 #define TFT_CS   15
 #define TFT_DC    2
 #define TFT_RST   4
 
-// ====== PIN SENTUH (Direct Wiring) ======
 #define T_CLK     5
 #define T_DIN     6
 #define T_DO      7
 #define T_CS      8
 
-// ====== NILAI KALIBRASI LAYAR SENTUH ======
 #define TS_MINX 3800
 #define TS_MAXX 300
 #define TS_MINY 300
@@ -90,7 +96,6 @@ bool ensureWiFiConnected() {
       Serial.println("[INFO] WiFi reconnect sukses. IP: " + WiFi.localIP().toString());
       return true;
     }
-
     delay(500);
     Serial.print(".");
   }
@@ -140,14 +145,6 @@ bool sendTransactionToBackend(int amount, const String& status, int ml, const St
   return false;
 }
 
-void printNetworkDebug() {
-  Serial.println("[DEBUG] WiFi status: " + String(WiFi.status()));
-  Serial.println("[DEBUG] Local IP: " + WiFi.localIP().toString());
-  Serial.println("[DEBUG] Gateway: " + WiFi.gatewayIP().toString());
-  Serial.println("[DEBUG] RSSI: " + String(WiFi.RSSI()));
-  Serial.println("[DEBUG] Backend URL: " + String(serverName));
-}
-
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -160,13 +157,14 @@ void setup() {
   ts.begin(touchSPI);
   ts.setRotation(1);
 
-  tft.fillScreen(ILI9341_BLACK);
+  // --- SPLASH SCREEN NETWORK ---
+  tft.fillScreen(COLOR_BG);
   tft.setTextColor(ILI9341_WHITE);
   tft.setTextSize(2);
-  tft.setCursor(30, 100);
-  tft.print("Menghubungkan ke:");
-  tft.setTextColor(ILI9341_YELLOW);
-  tft.setCursor(30, 130);
+  tft.setCursor(60, 100);
+  tft.print("Mencari WiFi...");
+  tft.setTextColor(COLOR_WARNING);
+  tft.setCursor(60, 130);
   tft.print(ssid);
 
   WiFi.mode(WIFI_STA);
@@ -180,45 +178,38 @@ void setup() {
     retries++;
   }
 
-  tft.fillScreen(ILI9341_BLACK);
+  tft.fillScreen(COLOR_BG);
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\n[INFO] WiFi Terhubung! IP: " + WiFi.localIP().toString());
-
-    tft.setTextColor(ILI9341_GREEN);
+    
+    // Icon Checkmark (Simulasi)
+    tft.fillCircle(160, 70, 25, COLOR_SUCCESS);
+    tft.setTextColor(ILI9341_WHITE);
     tft.setTextSize(3);
-    tft.setCursor(45, 50);
-    tft.print("WIFI SUKSES");
+    tft.setCursor(150, 60);
+    tft.print("v"); 
 
     tft.setTextSize(2);
-    tft.setTextColor(ILI9341_WHITE);
-    tft.setCursor(20, 100);
-    tft.print("SSID: ");
-    tft.print(ssid);
-    tft.setCursor(20, 130);
-    tft.print("IP: ");
-    tft.print(WiFi.localIP().toString());
+    tft.setCursor(80, 120);
+    tft.print("Sistem Online");
+    
+    tft.setTextColor(COLOR_TEXT_DIM);
+    tft.setTextSize(1);
+    tft.setCursor(105, 150);
+    tft.print("IP: "); tft.print(WiFi.localIP().toString());
   } else {
-    Serial.println("\n[WARNING] WiFi Gagal Terhubung! ESP-NOW tetap berjalan.");
-
-    tft.setTextColor(ILI9341_RED);
+    tft.fillCircle(160, 70, 25, COLOR_BTN_1L);
+    tft.setTextColor(ILI9341_WHITE);
     tft.setTextSize(3);
-    tft.setCursor(55, 50);
-    tft.print("WIFI GAGAL");
+    tft.setCursor(150, 60);
+    tft.print("X");
 
     tft.setTextSize(2);
-    tft.setTextColor(ILI9341_WHITE);
-    tft.setCursor(20, 100);
-    tft.print("Sistem berjalan di");
-    tft.setCursor(20, 130);
-    tft.print("Mode Offline.");
+    tft.setCursor(80, 120);
+    tft.print("Mode Offline");
   }
 
-  tft.setTextColor(ILI9341_DARKGREY);
-  tft.setTextSize(1);
-  tft.setCursor(50, 200);
-  tft.print("Masuk ke menu utama dalam 10 detik...");
-
-  delay(10000);
+  delay(3000); // Tahan lebih sebentar (3 detik) agar tidak terlalu lama menunggu
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("[ERROR] Gagal Inisialisasi ESP-NOW");
@@ -237,35 +228,14 @@ void setup() {
 }
 
 void loop() {
-  if (Serial.available()) {
-    String command = Serial.readStringUntil('\n');
-    command.trim();
-
-    Serial.println("[DEBUG] Serial command diterima: " + command);
-
-    if (command == "test") {
-      sendTransactionToBackend(
-        5000,
-        "Success",
-        300,
-        "ESP32 serial test transaction"
-      );
-    } else if (command == "net") {
-      printNetworkDebug();
-    }
-  }
-
   if (isWaitingForPayment) {
     if (ts.touched()) {
       long x_sum = 0, y_sum = 0, z_sum = 0;
 
       for (int i = 0; i < 10; i++) {
         TS_Point p = ts.getPoint();
-        x_sum += p.x;
-        y_sum += p.y;
-        z_sum += p.z;
+        x_sum += p.x; y_sum += p.y; z_sum += p.z;
       }
-
       int avg_z = z_sum / 10;
 
       if (avg_z > MIN_PRESSURE) {
@@ -274,28 +244,25 @@ void loop() {
         int x = map(avg_x, TS_MINX, TS_MAXX, 0, 320);
         int y = map(avg_y, TS_MINY, TS_MAXY, 0, 240);
 
-        if (x > 210 && x < 320 && y > 70 && y < 170) {
+        // Kordinat tombol "Sudah Bayar" yang baru
+        if (x > 180 && x < 310 && y > 150 && y < 220) {
           isWaitingForPayment = false;
 
-          tft.fillScreen(ILI9341_BLACK);
-          tft.setTextColor(ILI9341_GREEN);
+          tft.fillScreen(COLOR_BG);
+          tft.fillCircle(160, 100, 35, COLOR_SUCCESS);
+          tft.setTextColor(ILI9341_WHITE);
           tft.setTextSize(3);
-          tft.setCursor(40, 100);
-          tft.print("BAYAR SUKSES!");
+          tft.setCursor(75, 160);
+          tft.print("PEMBAYARAN");
+          tft.setCursor(100, 190);
+          tft.print("SUKSES");
 
-          sendTransactionToBackend(
-            pendingAmount,
-            "Success",
-            pendingMl,
-            "QRIS payment accepted"
-          );
-
+          sendTransactionToBackend(pendingAmount, "Success", pendingMl, "QRIS payment accepted");
           delay(1000);
 
           glassDetectedSignal = false;
           myData.cmdType = 1;
           myData.volume = pendingVolume;
-
           esp_err_t result = esp_now_send(receiverMacAddress, (uint8_t *) &myData, sizeof(myData));
 
           if (result == ESP_OK) {
@@ -303,20 +270,13 @@ void loop() {
             glassWaitStartTime = millis();
             drawWaitingForGlassScreen();
           } else {
-            sendTransactionToBackend(
-              pendingAmount,
-              "Failed",
-              pendingMl,
-              "QRIS payment accepted but pump command failed"
-            );
+            sendTransactionToBackend(pendingAmount, "Failed", pendingMl, "Command failed");
             drawMenu();
           }
         }
-
         delay(300);
       }
     }
-
     return;
   }
 
@@ -327,48 +287,36 @@ void loop() {
       startWaitingScreen(pendingSeconds);
     } else if (millis() - glassWaitStartTime > 60000) {
       isWaitingForGlass = false;
-      tft.fillScreen(ILI9341_BLACK);
-      tft.setTextColor(ILI9341_RED);
+      tft.fillScreen(COLOR_BG);
+      tft.setTextColor(COLOR_BTN_1L);
       tft.setTextSize(3);
-      tft.setCursor(30, 90);
+      tft.setCursor(50, 90);
       tft.print("WAKTU HABIS!");
-      tft.setTextColor(ILI9341_WHITE);
+      
+      tft.setTextColor(COLOR_TEXT_DIM);
       tft.setTextSize(2);
-      tft.setCursor(15, 140);
+      tft.setCursor(35, 130);
       tft.print("Gelas tidak diletakkan");
 
       myData.cmdType = 2;
       myData.volume = 0;
       esp_now_send(receiverMacAddress, (uint8_t *) &myData, sizeof(myData));
 
-      sendTransactionToBackend(
-        pendingAmount,
-        "Failed",
-        pendingMl,
-        "QRIS payment accepted but glass was not detected"
-      );
-
-      delay(4000);
+      sendTransactionToBackend(pendingAmount, "Failed", pendingMl, "Timeout");
+      delay(3000);
       drawMenu();
     }
-
     return;
   }
 
-  if (isWaiting) {
-    return;
-  }
+  if (isWaiting) return;
 
   if (ts.touched()) {
     long x_sum = 0, y_sum = 0, z_sum = 0;
-
     for (int i = 0; i < 10; i++) {
       TS_Point p = ts.getPoint();
-      x_sum += p.x;
-      y_sum += p.y;
-      z_sum += p.z;
+      x_sum += p.x; y_sum += p.y; z_sum += p.z;
     }
-
     int avg_z = z_sum / 10;
 
     if (avg_z > MIN_PRESSURE) {
@@ -377,140 +325,173 @@ void loop() {
       int x = map(avg_x, TS_MINX, TS_MAXX, 0, 320);
       int y = map(avg_y, TS_MINY, TS_MAXY, 0, 240);
 
-      if (x > 10 && x < 150 && y > 70 && y < 170) {
+      // Area Tombol 300mL
+      if (x > 20 && x < 150 && y > 70 && y < 200) {
         pendingSeconds = 10;
         pendingVolume = 10000.0 / MS_PER_ML;
         pendingAmount = 5000;
         pendingMl = 300;
-        drawQRIS("00020101021126610014COM.GO-JEK.WWW01189360091437219972490210G7219972490303UMI51440014ID.CO.QRIS.WWW0215ID10265222989040303UMI5204829953033605802ID5925CELINE MERCY TAASIRINGAN,6006MANADO61059511462070703A0163041B99", "300 mL");
+        drawQRIS("00020101021126610014COM.GO-JEK.WWW01189360091437219972490210G7219972490303UMI51440014ID.CO.QRIS.WWW0215ID10265222989040303UMI5204829953033605802ID5925CELINE MERCY TAASIRINGAN,6006MANADO61059511462070703A0163041B99", "300 mL", pendingAmount);
         isWaitingForPayment = true;
-      } else if (x > 170 && x < 310 && y > 70 && y < 170) {
+      } 
+      // Area Tombol 1 Liter
+      else if (x > 170 && x < 300 && y > 70 && y < 200) {
         pendingSeconds = 30;
         pendingVolume = 30000.0 / MS_PER_ML;
         pendingAmount = 10000;
         pendingMl = 1000;
-        drawQRIS("00020101021126610014COM.GO-JEK.WWW01189360091437219972490210G7219972490303UMI51440014ID.CO.QRIS.WWW0215ID10265222989040303UMI5204829953033605802ID5925CELINE MERCY TAASIRINGAN,6006MANADO61059511462070703A0163041B99", "1 Liter");
+        drawQRIS("00020101021126610014COM.GO-JEK.WWW01189360091437219972490210G7219972490303UMI51440014ID.CO.QRIS.WWW0215ID10265222989040303UMI5204829953033605802ID5925CELINE MERCY TAASIRINGAN,6006MANADO61059511462070703A0163041B99", "1 Liter", pendingAmount);
         isWaitingForPayment = true;
       }
-
       delay(300);
     }
   }
 }
 
-void drawQRIS(String payload, String selectedOption) {
+// ==========================================
+// FUNGSI UI (MENU & TAMPILAN)
+// ==========================================
+void drawMenu() {
+  tft.fillScreen(COLOR_BG);
+  
+  // Header
+  tft.fillRoundRect(10, 10, 300, 45, 8, COLOR_CARD);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(2);
+  // (320 - 192)/2 = 64
+  tft.setCursor(64, 25);
+  tft.print("PILIH KAPASITAS");
+
+  // Tombol 300 mL (X:20, Lebar:130. Tengah X = 85)
+  tft.fillRoundRect(20, 75, 130, 125, 12, COLOR_BTN_300);
+  tft.drawRoundRect(20, 75, 130, 125, 12, ILI9341_WHITE);
+  
+  // Icon / Grafis kecil di dalam tombol
+  tft.fillRoundRect(70, 95, 30, 40, 4, ILI9341_WHITE); // Visual gelas
+  tft.fillRoundRect(75, 110, 20, 20, 2, COLOR_BTN_300); // Isi air
+  
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(2);
+  tft.setCursor(49, 160); // Centered (85 - 36)
+  tft.print("300 mL");
+
+  // Tombol 1 Liter (X:170, Lebar:130. Tengah X = 235)
+  tft.fillRoundRect(170, 75, 130, 125, 12, COLOR_BTN_1L);
+  tft.drawRoundRect(170, 75, 130, 125, 12, ILI9341_WHITE);
+  
+  // Icon botol
+  tft.fillRoundRect(225, 90, 20, 45, 4, ILI9341_WHITE); 
+  tft.fillRect(230, 85, 10, 10, ILI9341_WHITE);
+  tft.fillRoundRect(230, 105, 10, 25, 2, COLOR_BTN_1L);
+
+  tft.setCursor(193, 160); // Centered (235 - 42)
+  tft.print("1 Liter");
+}
+
+void drawQRIS(String payload, String selectedOption, int amount) {
   tft.fillScreen(ILI9341_WHITE);
+  
+  // Header Biru untuk QRIS
+  tft.fillRect(0, 0, 320, 40, COLOR_BG);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(2);
+  tft.setCursor(15, 12);
+  tft.print("Scan QRIS");
+  
+  tft.setCursor(180, 12);
+  tft.print("Rp ");
+  tft.print(amount);
+
+  // Generate QR Code di Kiri
   QRCode qrcode;
   uint8_t qrisVersion = 13;
   uint32_t bufferSize = qrcode_getBufferSize(qrisVersion);
   uint8_t *qrcodeData = (uint8_t *)malloc(bufferSize);
 
-  if (qrcodeData == NULL) {
-    return;
-  }
-
-  if (qrcode_initText(&qrcode, qrcodeData, qrisVersion, 1, payload.c_str()) != 0) {
-    free(qrcodeData);
-    return;
-  }
-
-  int scale = 3;
-  int paddingX = 15;
-  int paddingY = (240 - (qrcode.size * scale)) / 2;
-
-  for (uint8_t y = 0; y < qrcode.size; y++) {
-    for (uint8_t x = 0; x < qrcode.size; x++) {
-      if (qrcode_getModule(&qrcode, x, y)) {
-        tft.fillRect(paddingX + (x * scale), paddingY + (y * scale), scale, scale, ILI9341_BLACK);
+  if (qrcodeData != NULL && qrcode_initText(&qrcode, qrcodeData, qrisVersion, 1, payload.c_str()) == 0) {
+    int scale = 2; // [PERBAIKAN] Skala diubah jadi 2 agar muat
+    int paddingX = 20; 
+    int paddingY = 71; // [PERBAIKAN] Posisi Y diturunkan agar rata tengah vertikal
+    for (uint8_t y = 0; y < qrcode.size; y++) {
+      for (uint8_t x = 0; x < qrcode.size; x++) {
+        if (qrcode_getModule(&qrcode, x, y)) {
+          tft.fillRect(paddingX + (x * scale), paddingY + (y * scale), scale, scale, ILI9341_BLACK);
+        }
       }
     }
+    free(qrcodeData);
   }
 
-  free(qrcodeData);
-
-  tft.setTextColor(ILI9341_BLACK);
+  // Info Box di Kanan
+  tft.fillRoundRect(170, 60, 130, 70, 8, COLOR_CARD);
+  tft.setTextColor(COLOR_TEXT_DIM);
+  tft.setTextSize(1);
+  tft.setCursor(180, 75);
+  tft.print("PILIHAN ANDA:");
+  
+  tft.setTextColor(ILI9341_WHITE);
   tft.setTextSize(2);
-  tft.setCursor(230, 25);
-  tft.print("Pilihan");
-
-  if (selectedOption == "300 mL") {
-    tft.setTextColor(ILI9341_BLUE);
-  } else {
-    tft.setTextColor(ILI9341_MAROON);
-  }
-
-  tft.setCursor(230, 45);
+  tft.setCursor(180, 95);
   tft.print(selectedOption);
 
-  tft.fillRoundRect(230, 80, 80, 80, 8, ILI9341_BLUE);
-  tft.drawRoundRect(230, 80, 80, 80, 8, ILI9341_BLACK);
+  // Tombol Sudah Bayar di Kanan Bawah
+  tft.fillRoundRect(170, 145, 130, 75, 10, COLOR_SUCCESS);
+  tft.drawRoundRect(170, 145, 130, 75, 10, COLOR_BG);
+  
   tft.setTextColor(ILI9341_WHITE);
   tft.setTextSize(2);
-  tft.setCursor(242, 105);
-  tft.print("Sudah");
-  tft.setCursor(242, 125);
-  tft.print("Bayar");
-}
-
-void drawMenu() {
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setTextColor(ILI9341_WHITE);
-  tft.setTextSize(2);
-  tft.setCursor(65, 20);
-  tft.print("Pilih Jumlah Air");
-  tft.drawFastHLine(0, 50, 320, ILI9341_DARKGREY);
-
-  tft.fillRoundRect(20, 80, 120, 80, 10, ILI9341_BLUE);
-  tft.drawRoundRect(20, 80, 120, 80, 10, ILI9341_WHITE);
-  tft.setCursor(50, 110);
-  tft.setTextColor(ILI9341_WHITE);
-  tft.print("300 mL");
-
-  tft.fillRoundRect(180, 80, 120, 80, 10, ILI9341_MAROON);
-  tft.drawRoundRect(180, 80, 120, 80, 10, ILI9341_WHITE);
-  tft.setCursor(210, 110);
-  tft.setTextColor(ILI9341_WHITE);
-  tft.print("1 Liter");
+  tft.setCursor(205, 165); // Centered dlm tombol
+  tft.print("SUDAH");
+  tft.setCursor(205, 185);
+  tft.print("BAYAR");
 }
 
 void drawWaitingForGlassScreen() {
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setTextColor(ILI9341_ORANGE);
-  tft.setTextSize(2);
-  tft.setCursor(45, 80);
-  tft.print("SILAKAN LETAKKAN");
-  tft.setCursor(65, 110);
-  tft.print("GELAS ANDA...");
+  tft.fillScreen(COLOR_BG);
+  
+  // Icon Gelas Menunggu
+  tft.drawRect(130, 60, 60, 80, ILI9341_WHITE);
+  tft.drawRect(129, 59, 62, 82, ILI9341_WHITE);
+  tft.drawLine(145, 75, 145, 120, COLOR_TEXT_DIM);
+  tft.drawLine(160, 85, 160, 120, COLOR_TEXT_DIM);
+  tft.drawLine(175, 70, 175, 120, COLOR_TEXT_DIM);
 
+  tft.setTextColor(COLOR_WARNING);
+  tft.setTextSize(2);
+  tft.setCursor(65, 160);
+  tft.print("LETAKKAN GELAS");
+  
   tft.setTextSize(1);
-  tft.setTextColor(ILI9341_DARKGREY);
-  tft.setCursor(55, 200);
-  tft.print("Maksimal waktu tunggu: 1 Menit");
+  tft.setTextColor(COLOR_TEXT_DIM);
+  tft.setCursor(75, 200);
+  tft.print("Sensor mendeteksi dalam 1 Menit");
 }
 
 void startWaitingScreen(int seconds) {
   isWaiting = true;
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setTextColor(ILI9341_YELLOW);
+  tft.fillScreen(COLOR_BG);
+  
+  tft.setTextColor(ILI9341_WHITE);
   tft.setTextSize(3);
-  tft.setCursor(65, 70);
+  tft.setCursor(65, 50);
   tft.print("PROSES ISI");
 
   for (int i = seconds; i > 0; i--) {
-    tft.fillRect(120, 130, 80, 50, ILI9341_BLACK);
-    tft.setTextColor(ILI9341_CYAN);
-    tft.setTextSize(5);
-
+    // Bersihkan angka lama
+    tft.fillRoundRect(110, 110, 100, 80, 12, COLOR_CARD);
+    
+    tft.setTextColor(COLOR_BTN_300);
+    tft.setTextSize(6);
+    
+    // Perataan tengah untuk angka satuan vs puluhan
     if (i >= 10) {
-      tft.setCursor(130, 130);
+      tft.setCursor(125, 125);
     } else {
-      tft.setCursor(145, 130);
+      tft.setCursor(145, 125);
     }
-
     tft.print(i);
     delay(1000);
   }
-
   isWaiting = false;
   drawMenu();
 }
