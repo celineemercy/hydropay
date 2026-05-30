@@ -93,7 +93,7 @@ export function useTransactionData(): UseTransactionDataResult {
 
             if (
               !transaction.timestamp ||
-              !transaction.amount ||
+              typeof transaction.amount !== "number" ||
               !transaction.details ||
               (status !== "success" && status !== "failed")
             ) {
