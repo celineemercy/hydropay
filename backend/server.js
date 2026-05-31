@@ -69,11 +69,6 @@ async function connectDatabase() {
   );
 }
 
-// TAMBAHKAN BARIS INI: Untuk menampilkan halaman web
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});
-
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
