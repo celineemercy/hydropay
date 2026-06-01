@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { type TransactionStatus, useTransactionData } from "@/hooks/useTransactionData";
@@ -21,7 +21,6 @@ const currencyFormatter = new Intl.NumberFormat("id-ID", {
 type IconName = "check" | "close" | "trend" | "pulse" | "search" | "filter" | "chevron";
 type StatusFilter = "all" | TransactionStatus;
 
-const navItems = ["Summary", "Recent Transactions", "Analytics"];
 const filters: Array<{ label: string; value: StatusFilter }> = [
   { label: "All Status", value: "all" },
   { label: "Success Only", value: "success" },
@@ -150,14 +149,7 @@ function StatCard({
               Dispenser Active
             </span>
           ) : (
-            <Button
-              onClick={() => document.getElementById("recent-transactions")?.scrollIntoView()}
-              size="none"
-              type="button"
-              variant="linkCoral"
-            >
-              Review Alerts -&gt;
-            </Button>
+            <span className="metric-review">Needs operator review</span>
           )}
         </div>
       </CardContent>
@@ -204,30 +196,6 @@ export default function App(): JSX.Element {
               </Badge>
             </div>
           </div>
-
-          <div className="header-insight" aria-label="Dashboard health summary">
-            <div>
-              <span className="insight-label">Success rate</span>
-              <span className="insight-value">{successRate}%</span>
-            </div>
-            <div>
-              <span className="insight-label">Open reviews</span>
-              <span className="insight-value">{metrics.failedCount}</span>
-            </div>
-          </div>
-
-          <nav aria-label="Dashboard navigation" className="dashboard-nav">
-            {navItems.map((item) => (
-              <Button
-                key={item}
-                size="none"
-                type="button"
-                variant={item === "Summary" ? "segmentActive" : "segment"}
-              >
-                {item}
-              </Button>
-            ))}
-          </nav>
         </header>
 
         <section className="summary-grid" id="summary">
@@ -249,28 +217,28 @@ export default function App(): JSX.Element {
           />
         </section>
 
-        <section className="transactions-section" id="recent-transactions">
-          <Card className="transactions-card">
-            <CardHeader className="transactions-header">
-              <div className="transactions-titlebar">
+        <section className="records-section" id="transaction-data">
+          <Card className="records-card">
+            <CardContent className="records-content">
+              <div className="records-header">
                 <div>
-                  <CardTitle className="transactions-title">Recent Transactions</CardTitle>
-                  <CardDescription className="transactions-description">
-                    Search, filter, and review the latest dispenser payment events.
-                  </CardDescription>
+                  <h2 className="records-title">Transaction Data</h2>
+                  <p className="records-description">
+                    Latest payment and dispenser records from the connected backend.
+                  </p>
                 </div>
                 <Badge variant="count">
                   Showing {visibleTransactions.length} of {metrics.totalCount}
                 </Badge>
               </div>
 
-              <div className="toolbar-grid">
+              <div className="records-toolbar">
                 <label className="search-field">
                   <Icon name="search" className="dashboard-icon search-field-icon" />
                   <Input
                     className="search-input"
                     onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Search by transaction ID or details..."
+                    placeholder="Search transaction ID or details..."
                     type="search"
                     value={searchQuery}
                   />
@@ -316,30 +284,14 @@ export default function App(): JSX.Element {
                 </div>
               </div>
 
-              <div className="filter-chips">
-                {filters.map((filter) => (
-                  <Button
-                    key={filter.value}
-                    onClick={() => setStatusFilter(filter.value)}
-                    size="none"
-                    type="button"
-                    variant={statusFilter === filter.value ? "chipActive" : "chip"}
-                  >
-                    {filter.label}
-                  </Button>
-                ))}
-              </div>
-            </CardHeader>
+              <div className="records-list">
+                {visibleTransactions.map((transaction) => (
+                  <article className="record-row" key={transaction.id}>
+                    <div>
+                      <div className="record-id">{transaction.id}</div>
+                      <div className="record-time">{formatTimestamp(transaction.timestamp)}</div>
+                    </div>
 
-            <CardContent className="transactions-content">
-              {visibleTransactions.map((transaction) => (
-                <article className="transaction-row" key={transaction.id}>
-                  <div>
-                    <div className="transaction-id">{transaction.id}</div>
-                    <div className="transaction-time">{formatTimestamp(transaction.timestamp)}</div>
-                  </div>
-
-                  <div className="transaction-status">
                     <Badge
                       variant={transaction.status === "success" ? "statusSuccess" : "statusFailed"}
                     >
@@ -351,18 +303,18 @@ export default function App(): JSX.Element {
                       />
                       {transaction.status === "success" ? "Success" : "Failed"}
                     </Badge>
-                  </div>
 
-                  <div className="transaction-detail-group">
-                    <div className="transaction-amount">{formatAmount(transaction.amount)}</div>
-                    <div className="transaction-detail">{transaction.details}</div>
-                  </div>
-                </article>
-              ))}
+                    <div className="record-detail-group">
+                      <div className="record-amount">{formatAmount(transaction.amount)}</div>
+                      <div className="record-detail">{transaction.details}</div>
+                    </div>
+                  </article>
+                ))}
 
-              {visibleTransactions.length === 0 ? (
-                <div className="transaction-empty">No transactions match the current filters.</div>
-              ) : null}
+                {visibleTransactions.length === 0 ? (
+                  <div className="record-empty">No transaction data matches the current filters.</div>
+                ) : null}
+              </div>
             </CardContent>
           </Card>
         </section>
