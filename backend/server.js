@@ -5,9 +5,12 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
-const { MongoClient } = require("mongodb");
 const { Server } = require("socket.io");
-const { z } = require("zod");
+const { connectDatabase } = require("./lib/db");
+const {
+  createHardwareTransaction,
+  listTransactions,
+} = require("./lib/transactions");
 
 const app = express();
 const server = http.createServer(app);
@@ -28,58 +31,13 @@ app.use((req, res, next) => {
   next();
 });
 
-const transactionInputSchema = z.object({
-  amount: z.coerce.number().int().positive(),
-  status: z
-    .string()
-    .trim()
-    .transform((value) => value.toLowerCase())
-    .pipe(z.enum(["success", "failed"])),
-  details: z.string().trim().min(1).max(500),
-});
-
-const mongoUri = process.env.MONGODB_URI || "mongodb://mongo:27017";
-const mongoDbName = process.env.MONGODB_DB || "hydropay";
-const transactionCollectionName =
-  process.env.MONGODB_COLLECTION || "transactions";
-const mongoClient = new MongoClient(mongoUri);
-let transactionsCollection;
-
-function createTransactionId(date) {
-  const compactTimestamp = date
-    .toISOString()
-    .replace(/[-:.TZ]/g, "")
-    .slice(0, 14);
-  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
-
-  return `TRX-${compactTimestamp}-${suffix}`;
-}
-
-async function connectDatabase() {
-  await mongoClient.connect();
-  transactionsCollection = mongoClient
-    .db(mongoDbName)
-    .collection(transactionCollectionName);
-
-  await transactionsCollection.createIndex({ createdAt: -1 });
-  await transactionsCollection.createIndex({ id: 1 }, { unique: true });
-
-  console.log(
-    `MongoDB terhubung ke ${mongoDbName}.${transactionCollectionName}`,
-  );
-}
-
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
 app.get("/api/transactions", async (req, res, next) => {
   try {
-    const transactions = await transactionsCollection
-      .find({})
-      .sort({ createdAt: -1 })
-      .limit(50)
-      .toArray();
+    const transactions = await listTransactions();
 
     res.status(200).json({ transactions });
   } catch (error) {
@@ -89,31 +47,16 @@ app.get("/api/transactions", async (req, res, next) => {
 
 app.post("/api/hardware/transactions", async (req, res, next) => {
   try {
-    const parsedPayload = transactionInputSchema.safeParse(req.body);
+    const expectedHardwareKey = process.env.HARDWARE_API_KEY;
 
-    if (!parsedPayload.success) {
-      return res.status(400).json({
-        error: "Invalid transaction payload",
-        issues: parsedPayload.error.flatten(),
-      });
+    if (
+      expectedHardwareKey &&
+      req.get("x-hydropay-device-key") !== expectedHardwareKey
+    ) {
+      return res.status(401).json({ error: "Invalid hardware API key" });
     }
 
-    const now = new Date();
-    const transaction = {
-      id: createTransactionId(now),
-      timestamp: now.toISOString(),
-      amount: parsedPayload.data.amount,
-      status: parsedPayload.data.status,
-      details: parsedPayload.data.details,
-      source: "esp32",
-      createdAt: now,
-    };
-
-    const result = await transactionsCollection.insertOne(transaction);
-    const responseTransaction = {
-      ...transaction,
-      _id: result.insertedId,
-    };
+    const responseTransaction = await createHardwareTransaction(req.body);
 
     io.emit("transaction:update", responseTransaction);
 
@@ -137,6 +80,14 @@ io.on("connection", (socket) => {
 
 app.use((error, req, res, next) => {
   console.error(error);
+
+  if (error.statusCode === 400 && error.issues) {
+    return res.status(400).json({
+      error: error.message,
+      issues: error.issues,
+    });
+  }
+
   res.status(500).json({ error: "Internal server error" });
 });
 

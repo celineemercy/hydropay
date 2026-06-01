@@ -15,7 +15,8 @@ Update these values before uploading to the ESP32:
 ```cpp
 const char* ssid = "hydropay";
 const char* password = "hyrdopay123";
-const char* serverName = "http://10.197.22.242:8086/api/hardware/transactions";
+const char* serverName = "https://your-hydropay-project.vercel.app/api/hardware/transactions";
+const char* hardwareApiKey = "replace-with-your-device-key";
 ```
 
 The firmware sends:
