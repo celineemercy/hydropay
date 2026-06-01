@@ -7,9 +7,11 @@ HydroPay is a smart dispenser transaction monitor. The project contains an ESP32
 ```text
 .
 |-- backend/             # Express + Socket.IO backend
+|-- api/                 # Vercel serverless API functions
 |-- firmware/            # ESP32 dispenser firmware
 |-- frontend/            # Vite + React + TypeScript dashboard
 |-- docker-compose.yml   # Backend, MongoDB, and frontend containers
+|-- vercel.json          # Vercel build, output, and rewrite config
 |-- package.json         # Root Node package metadata
 `-- .env                 # Local environment values
 ```
@@ -20,6 +22,7 @@ HydroPay is a smart dispenser transaction monitor. The project contains an ESP32
 - Database: MongoDB
 - Frontend: React 18, TypeScript, Vite, Tailwind CSS
 - Runtime/deployment: Docker, Docker Compose, Nginx
+- Vercel deployment: Vite static frontend + Node.js serverless API functions
 - Firmware: ESP32, Arduino IDE, ESP-NOW, HTTPClient
 
 ## Features
@@ -31,6 +34,7 @@ HydroPay is a smart dispenser transaction monitor. The project contains an ESP32
 - Frontend polling of recent transactions from the backend API
 - Socket.IO backend event relay for dispenser screen/status updates and transaction updates
 - Dockerized frontend, backend, and MongoDB services
+- Vercel-ready API functions for production deployment with MongoDB Atlas
 
 ## Prerequisites
 
@@ -125,6 +129,34 @@ npm run build
 
 The production build is written to `frontend/dist`.
 
+## Deploy To Vercel
+
+The production deployment target is:
+
+- Vercel static hosting for `frontend/dist`
+- Vercel Functions in `api/`
+- MongoDB Atlas or another public MongoDB connection string
+
+The local Docker MongoDB service is not available on Vercel. Create a MongoDB Atlas cluster, then add these environment variables in the Vercel project settings:
+
+```text
+MONGODB_URI=mongodb+srv://...
+MONGODB_DB=hydropay
+MONGODB_COLLECTION=transactions
+CORS_ORIGIN=https://your-hydropay-project.vercel.app
+HARDWARE_API_KEY=replace-with-a-long-random-device-secret
+```
+
+`vercel.json` builds the frontend from `frontend/`, serves `frontend/dist`, exposes `/api/*` functions, and rewrites `/health` to `/api/health`.
+
+After deployment, update the firmware endpoint to:
+
+```text
+https://your-hydropay-project.vercel.app/api/hardware/transactions
+```
+
+If `HARDWARE_API_KEY` is set in Vercel, the firmware must send the same value with the `x-hydropay-device-key` header.
+
 ## Firmware Workflow
 
 Open `firmware/hydropay_dispenser/hydropay_dispenser.ino` from Arduino IDE. The sketch displays QRIS payment choices, waits for the user to confirm payment, sends pump commands over ESP-NOW, and posts transaction results to:
@@ -133,7 +165,7 @@ Open `firmware/hydropay_dispenser/hydropay_dispenser.ino` from Arduino IDE. The 
 POST /api/hardware/transactions
 ```
 
-Before uploading, update the Wi-Fi credentials, backend URL, pump receiver MAC address, and QRIS payloads in the sketch. The firmware folder also expects `qris_qrc.h` to be present beside the `.ino` file.
+Before uploading, update the Wi-Fi credentials, backend URL, hardware API key, pump receiver MAC address, and QRIS payloads in the sketch. The firmware folder also expects `qris_qrc.h` to be present beside the `.ino` file.
 
 ## Environment Variables
 
@@ -146,15 +178,17 @@ CORS_ORIGIN=*
 MONGODB_URI=mongodb://localhost:27017
 MONGODB_DB=hydropay
 MONGODB_COLLECTION=transactions
+HARDWARE_API_KEY=replace-with-a-long-random-device-secret
 ```
 
-Docker Compose sets the backend container values for `PORT`, `HOST`, `MONGODB_URI`, `MONGODB_DB`, and `MONGODB_COLLECTION`. The root `.env` is only used by Docker Compose for variable substitution such as `FRONTEND_PORT`, `BACKEND_PORT`, or `MONGO_PORT`; the current backend does not read MQTT variables. Keep real credentials, private broker details, and production database URLs out of commits.
+Docker Compose sets the backend container values for `PORT`, `HOST`, `MONGODB_URI`, `MONGODB_DB`, `MONGODB_COLLECTION`, and optionally `HARDWARE_API_KEY`. The root `.env` is only used by Docker Compose for variable substitution such as `FRONTEND_PORT`, `BACKEND_PORT`, `MONGO_PORT`, or `HARDWARE_API_KEY`; the current backend does not read MQTT variables. Keep real credentials, private broker details, and production database URLs out of commits.
 
 ## Backend API
 
 The backend exposes:
 
 - `GET /health`: health check endpoint
+- `GET /api/health`: Vercel health check endpoint
 - `GET /api/transactions`: returns the 50 most recent transactions from MongoDB
 - `POST /api/hardware/transactions`: accepts hardware transaction payloads
 
@@ -169,6 +203,12 @@ Hardware transaction payload:
 ```
 
 `status` is normalized to lowercase and must be either `success` or `failed`. Successful inserts are emitted over Socket.IO as `transaction:update`.
+
+When `HARDWARE_API_KEY` is configured, `POST /api/hardware/transactions` requires:
+
+```text
+x-hydropay-device-key: your-secret-value
+```
 
 ## Socket.IO Events
 
@@ -212,3 +252,4 @@ node server.js
 - `frontend/Dockerfile` builds the React app and serves it with Nginx.
 - Nginx proxies `/api/` and `/socket.io/` to the backend container.
 - The React dashboard keeps sample transactions as an initial fallback while it polls backend data.
+- Vercel production does not use Socket.IO; the dashboard relies on polling `GET /api/transactions`.

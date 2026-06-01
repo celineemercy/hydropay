@@ -20,7 +20,8 @@
 const char* ssid = "hydropay";
 const char* password = "hyrdopay123";
 
-const char* serverName = "http://10.197.22.242:8086/api/hardware/transactions";
+const char* serverName = "https://your-hydropay-project.vercel.app/api/hardware/transactions";
+const char* hardwareApiKey = "";
 
 // ====== PIN LAYAR & SENTUH ======
 #define TFT_SCLK 18
@@ -114,6 +115,9 @@ bool sendTransactionToBackend(int amount, const String& status, int ml, const St
   http.setTimeout(5000);
   http.begin(serverName);
   http.addHeader("Content-Type", "application/json");
+  if (strlen(hardwareApiKey) > 0) {
+    http.addHeader("x-hydropay-device-key", hardwareApiKey);
+  }
 
   String details = reason + " - " + String(ml) + " ml";
 
