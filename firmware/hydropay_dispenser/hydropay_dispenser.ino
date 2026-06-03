@@ -20,8 +20,8 @@
 const char* ssid = "hydropay";
 const char* password = "hyrdopay123";
 
-const char* serverName = "https://your-hydropay-project.vercel.app/api/hardware/transactions";
-const char* hardwareApiKey = "";
+const char* serverName = "http://10.197.22.242:8086/api/hardware/transactions";
+const char* hardwareApiKey = "hydropay_esp32_pakgufi";
 
 // ====== PIN LAYAR & SENTUH ======
 #define TFT_SCLK 18
@@ -68,9 +68,12 @@ float pendingVolume = 0.0;
 int pendingAmount = 0;
 int pendingMl = 0;
 
+volatile int espNowDeliveryStatus = -1; // -1: menunggu, 0: sukses, 1: gagal
+
 void OnDataSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
   Serial.print("\r\n[ESP-NOW] Status Pengiriman Ke Pump: ");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "SUKSES" : "GAGAL");
+  espNowDeliveryStatus = (status == ESP_NOW_SEND_SUCCESS) ? 0 : 1;
 }
 
 void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len) {
@@ -149,6 +152,12 @@ bool sendTransactionToBackend(int amount, const String& status, int ml, const St
   return false;
 }
 
+void showMacAddressOnScreen();
+void drawMenu();
+void drawWaitingForGlassScreen();
+void startWaitingScreen(int seconds);
+void drawQRIS(String payload, String selectedOption, int amount);
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -186,7 +195,7 @@ void setup() {
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\n[INFO] WiFi Terhubung! IP: " + WiFi.localIP().toString());
     
-    // Icon Checkmark (Simulasi)
+    // Icon Checkmark
     tft.fillCircle(160, 70, 25, COLOR_SUCCESS);
     tft.setTextColor(ILI9341_WHITE);
     tft.setTextSize(3);
@@ -199,7 +208,7 @@ void setup() {
     
     tft.setTextColor(COLOR_TEXT_DIM);
     tft.setTextSize(1);
-    tft.setCursor(105, 150);
+    tft.setCursor(105, 145);
     tft.print("IP: "); tft.print(WiFi.localIP().toString());
   } else {
     tft.fillCircle(160, 70, 25, COLOR_BTN_1L);
@@ -213,7 +222,9 @@ void setup() {
     tft.print("Mode Offline");
   }
 
-  delay(3000); // Tahan lebih sebentar (3 detik) agar tidak terlalu lama menunggu
+  showMacAddressOnScreen();
+
+  delay(5000); // Ditahan 5 detik agar sempat difoto
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("[ERROR] Gagal Inisialisasi ESP-NOW");
@@ -264,17 +275,56 @@ void loop() {
           sendTransactionToBackend(pendingAmount, "Success", pendingMl, "QRIS payment accepted");
           delay(1000);
 
+          // === LOGIKA FEEDBACK ESP-NOW UI ===
           glassDetectedSignal = false;
           myData.cmdType = 1;
           myData.volume = pendingVolume;
+
+          espNowDeliveryStatus = -1;
+
+          tft.fillScreen(COLOR_BG);
+          tft.setTextColor(ILI9341_WHITE);
+          tft.setTextSize(2);
+          tft.setCursor(40, 100);
+          tft.print("Menghubungi Pompa...");
+
           esp_err_t result = esp_now_send(receiverMacAddress, (uint8_t *) &myData, sizeof(myData));
 
           if (result == ESP_OK) {
-            isWaitingForGlass = true;
-            glassWaitStartTime = millis();
-            drawWaitingForGlassScreen();
+            unsigned long waitStart = millis();
+            while (espNowDeliveryStatus == -1 && millis() - waitStart < 1000) {
+              delay(10);
+            }
+
+            if (espNowDeliveryStatus == 0) {
+              tft.setTextColor(COLOR_SUCCESS);
+              tft.setTextSize(3);
+              tft.setCursor(80, 130);
+              tft.print("BERHASIL!");
+              delay(1500);
+
+              isWaitingForGlass = true;
+              glassWaitStartTime = millis();
+              drawWaitingForGlassScreen();
+            } else {
+              tft.setTextColor(COLOR_BTN_1L);
+              tft.setTextSize(2);
+              tft.setCursor(65, 130);
+              tft.print("GAGAL TERHUBUNG");
+              tft.setTextSize(1);
+              tft.setTextColor(COLOR_TEXT_DIM);
+              tft.setCursor(85, 160);
+              tft.print("(Pastikan pompa menyala)");
+
+              sendTransactionToBackend(pendingAmount, "Failed", pendingMl, "Pompa tidak merespons");
+              delay(3000);
+              drawMenu();
+            }
           } else {
-            sendTransactionToBackend(pendingAmount, "Failed", pendingMl, "Command failed");
+            tft.setTextColor(COLOR_BTN_1L);
+            tft.setCursor(60, 130);
+            tft.print("ERROR ESP-NOW");
+            delay(2000);
             drawMenu();
           }
         }
@@ -498,4 +548,31 @@ void startWaitingScreen(int seconds) {
   }
   isWaiting = false;
   drawMenu();
+}
+
+// ==========================================
+// FUNGSI UNTUK MENAMPILKAN MAC ADDRESS
+// ==========================================
+void showMacAddressOnScreen() {
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+
+  char macPart1[] = "uint8_t receiverMacAddress[] = ";
+  char macPart2[50];
+
+  sprintf(macPart2, "{0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X};",
+          mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+  tft.setTextColor(COLOR_TEXT_DIM);
+  tft.setTextSize(1);
+  tft.setCursor(20, 175);
+  tft.print("Copy kode ini ke ESP32 Pump (Receiver):");
+
+  tft.setTextColor(ILI9341_CYAN);
+  tft.setCursor(20, 195);
+  tft.print(macPart1);
+
+  tft.setTextColor(ILI9341_YELLOW);
+  tft.setCursor(20, 210);
+  tft.print(macPart2);
 }
