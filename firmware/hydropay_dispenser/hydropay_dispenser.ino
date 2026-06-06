@@ -20,7 +20,7 @@
 const char* ssid = "hydropay";
 const char* password = "hyrdopay123";
 
-const char* serverName = "http://10.197.22.242:8086/api/hardware/transactions";
+const char* serverName = "https://hydropayyy.vercel.app/api/hardware/transactions";
 const char* hardwareApiKey = "hydropay_esp32_pakgufi";
 
 // ====== PIN LAYAR & SENTUH ======
