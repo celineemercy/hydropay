@@ -30,8 +30,10 @@ HydroPay is a smart dispenser transaction monitor. The project contains an ESP32
 - Transaction dashboard for successful and failed dispenser payments
 - Summary metrics for total records, success count, and failure count
 - Backend API for hardware transaction submissions
+- Mock QRIS generation endpoint and QRIS payment webhook
 - MongoDB persistence for recent transaction records
 - Frontend polling of recent transactions from the backend API
+- Serverless QRIS webhook can publish dispense commands over MQTT
 - Socket.IO backend event relay for dispenser screen/status updates and transaction updates
 - Dockerized frontend, backend, and MongoDB services
 - Vercel-ready API functions for production deployment with MongoDB Atlas
@@ -145,9 +147,11 @@ MONGODB_DB=hydropay
 MONGODB_COLLECTION=transactions
 CORS_ORIGIN=https://your-hydropay-project.vercel.app
 HARDWARE_API_KEY=replace-with-a-long-random-device-secret
+MQTT_BROKER_URL=mqtt://broker.hivemq.com
+MQTT_TOPIC_COMMAND=hydropay/command
 ```
 
-`vercel.json` builds the frontend from `frontend/`, serves `frontend/dist`, exposes `/api/*` functions, and rewrites `/health` to `/api/health`.
+`vercel.json` builds the frontend from `frontend/`, serves `frontend/dist`, exposes `/api/*` functions, and rewrites `/health` to `/api/health`. `MQTT_BROKER_URL` is required only if you use `POST /api/qris/webhook`; `MQTT_TOPIC_COMMAND` defaults to `hydropay/command` when it is not set.
 
 After deployment, update the firmware endpoint to:
 
@@ -169,7 +173,7 @@ Before uploading, update the Wi-Fi credentials, backend URL, hardware API key, p
 
 ## Environment Variables
 
-The backend reads environment variables from the process environment or from `backend/.env`:
+The Express backend and shared serverless API helpers read environment variables from the process environment. When running `backend/server.js` directly, dotenv also loads `backend/.env`:
 
 ```text
 PORT=8086
@@ -179,18 +183,25 @@ MONGODB_URI=mongodb://localhost:27017
 MONGODB_DB=hydropay
 MONGODB_COLLECTION=transactions
 HARDWARE_API_KEY=replace-with-a-long-random-device-secret
+MQTT_BROKER_URL=mqtt://broker.hivemq.com
+MQTT_TOPIC_COMMAND=hydropay/command
 ```
 
-Docker Compose sets the backend container values for `PORT`, `HOST`, `MONGODB_URI`, `MONGODB_DB`, `MONGODB_COLLECTION`, and optionally `HARDWARE_API_KEY`. The root `.env` is only used by Docker Compose for variable substitution such as `FRONTEND_PORT`, `BACKEND_PORT`, `MONGO_PORT`, or `HARDWARE_API_KEY`; the current backend does not read MQTT variables. Keep real credentials, private broker details, and production database URLs out of commits.
+Docker Compose sets the backend container values for `PORT`, `HOST`, `MONGODB_URI`, `MONGODB_DB`, `MONGODB_COLLECTION`, and optionally `HARDWARE_API_KEY`. The root `.env` is used by Docker Compose for variable substitution such as `FRONTEND_PORT`, `BACKEND_PORT`, `MONGO_PORT`, or `HARDWARE_API_KEY`. MQTT variables are used by the serverless QRIS webhook path, not by the long-running Express Docker backend. Keep real credentials, private broker details, and production database URLs out of commits.
 
 ## Backend API
 
-The backend exposes:
+The Express backend exposes:
 
 - `GET /health`: health check endpoint
-- `GET /api/health`: Vercel health check endpoint
 - `GET /api/transactions`: returns the 50 most recent transactions from MongoDB
 - `POST /api/hardware/transactions`: accepts hardware transaction payloads
+
+The Vercel serverless API also exposes:
+
+- `GET /api/health`: serverless health check endpoint
+- `POST /api/qris/generate`: returns a mock QRIS generation response with a dummy QR string
+- `POST /api/qris/webhook`: accepts payment webhook data and publishes an MQTT dispense command when the payment is settled or paid
 
 Hardware transaction payload:
 
@@ -202,7 +213,17 @@ Hardware transaction payload:
 }
 ```
 
-`status` is normalized to lowercase and must be either `success` or `failed`. Successful inserts are emitted over Socket.IO as `transaction:update`.
+`status` is normalized to lowercase and must be either `success` or `failed`. Successful inserts in the Express backend are emitted over Socket.IO as `transaction:update`.
+
+QRIS webhook payloads are treated as paid when either `transaction_status` is `settlement` or `status` is `PAID`. On paid payloads, the webhook publishes this command to `MQTT_TOPIC_COMMAND`:
+
+```json
+{
+  "action": "DISPENSE",
+  "amount": 200,
+  "transactionId": "TRX-..."
+}
+```
 
 When `HARDWARE_API_KEY` is configured, `POST /api/hardware/transactions` requires:
 
